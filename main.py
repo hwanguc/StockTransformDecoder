@@ -39,7 +39,7 @@ for i in l:
     START = "2000-01-01"
     TODAY = date.today().strftime("%Y-%m-%d")
 
-    df_raw = acquire_ticker('AAPL', START, TODAY)
+    df_raw = acquire_ticker(i, START, TODAY)
     df_raw = df_raw.sort_values('Date')
     df_raw = df_raw[['Date','Open','High','Low','Close', 'Adj Close','Volume']]
 
@@ -102,8 +102,8 @@ for i in l:
     print('时间', e - s)
 
     testdata_len = y_test.shape[0]
-    predicted_stock_price_multi_head_dff1, predicted_stock_price_multi_head = denormalize(df_raw, predicted_stock_price_multi_head,division_rate2, seq_len, mulpre, testdata_len)
-    y_test_dff1, y_test = denormalize(df_raw, y_test, division_rate2, seq_len, mulpre, testdata_len)
+    predicted_stock_price_multi_head_dff1, predicted_stock_price_multi_head = denormalize(df_raw, predicted_stock_price_multi_head,division_rate1,division_rate2, seq_len, mulpre, testdata_len)
+    y_test_dff1, y_test = denormalize(df_raw, y_test,division_rate1,division_rate2, seq_len, mulpre, testdata_len)
 
     stock = i
     model2 = 'Galformer'

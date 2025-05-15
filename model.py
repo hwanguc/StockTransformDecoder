@@ -73,8 +73,8 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
     if normalize:
         standard_scaler = preprocessing.StandardScaler()
         train = standard_scaler.fit_transform(train)
-        valid = standard_scaler.fit_transform(valid)
-        test = standard_scaler.fit_transform(test)
+        valid = standard_scaler.transform(valid)
+        test = standard_scaler.transform(test)
 
     print('train',train)
     print('valid', valid)
@@ -265,7 +265,7 @@ class Encoder(tf.keras.layers.Layer):
 
         #应该concatenate！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
         for i in range(self.num_layers):
-            x = self.enc_layers[i](x, training)
+            x = self.enc_layers[i](x, training=training)
 
         return x  # (G.batch_size, G.src_len, G.dense_dim)
 
@@ -416,7 +416,7 @@ class Decoder(tf.keras.layers.Layer):
                                     enc_output,
                                     self.dec_ahead_mask,
                                     self.enc_memory_mask,
-                                    training)
+                                    training=training)
 
         print('y.shape', y.shape)
         return y
@@ -480,10 +480,10 @@ class Transformer(tf.keras.Model):
 
 
 
-        enc_output = self.encoder(enc_input, training)  # (G.batch_size, G.src_len, G.num_features)
+        enc_output = self.encoder(enc_input, training=training)  # (G.batch_size, G.src_len, G.num_features)
         print('enc_output.shape', enc_output.shape)
 
-        dec_output = self.decoder(dec_input, enc_output, training)
+        dec_output = self.decoder(dec_input, enc_output, training=training)
         print('dec_output.shape', dec_output.shape)
         # (G.batch_size, G.tgt_len, 32)
 
@@ -525,7 +525,7 @@ def up_down_accuracy(real, pre):
     print('real.shape', real.shape)
     print('pre.shape', pre.shape)
     mse = tf.reduce_mean(tf.square(pre - real))
-    print('mse！！！！！',K.get_value(mse))
+    print('MSE is:',K.get_value(mse))
     print('real666.shape', real.shape)
     print('pre666.shape', pre.shape)#real666.shape (None, 3)  pre666.shape (None, 3)
     print('real666', real)
@@ -534,7 +534,8 @@ def up_down_accuracy(real, pre):
     accu = tf.nn.relu(accu)#relu(x) = max(0,x)
     accu = tf.sign(accu)#正数变1，0不变
     accu = tf.reduce_mean(accu)#取平均
-    print('accu！！！！！', K.get_value(accu))#准确率，0.x
+    print('\n\n\n')
+    print('Accuracy is:', K.get_value(accu))#准确率，0.x
     '''result = tf.compat.v1.Session().run(result)
 
     print('resultnumpy', result)
@@ -543,14 +544,15 @@ def up_down_accuracy(real, pre):
     accu = 1 - accu#loss越小越好，所以1-准确率S
     #loss = mse + accu * 10 #mse个位数，accu 0.x
     loss = accu * pow(10, floor(math.log(abs(mse), 10))) + mse
+    print('Loss is:', K.get_value(loss))
     return loss#个位数
 
 
-def denormalize(df, normalized_value, division_rate2, seq_len, mulpre, testdata_len):
+def denormalize(df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len):
     list = df['Adj Close']
     list1 = list.diff(1).dropna()  # list1为list的1阶差分序列,序列的序号从1开始,所以要tolist,这样序号才从0开始. 但是列表不能调用diff
     # 或者list1 = np.diff(list)[1:]
-    list1 = list1.tolist()
+    list1 = list1.iloc[:, 0].tolist()
     list1 = np.array(list1)  # array才能reshape
     df1 = df.drop(0, axis=0)
     df1['Adj Close'] = list1
@@ -559,12 +561,20 @@ def denormalize(df, normalized_value, division_rate2, seq_len, mulpre, testdata_
     print(df1.head())
     data = df.values
     data1 = df1.values
-    row2 = round(division_rate2 * list1.shape[0])
+
+
     # 训练集和测试集划分
+    row1 = round(division_rate1 * list1.shape[0])
+    row2 = round(division_rate2 * list1.shape[0])
+
+    train = data1[:int(row1), :]
     test = data1[int(row2): , :]
-    test = test.reshape(-1, 1)#取原来没有归一化的adj数据作为样本
+
+    test = test[:,-2].reshape(-1, 1)#取原来没有归一化的adj数据作为样本
+
     standard_scaler = preprocessing.StandardScaler()
-    m = standard_scaler.fit_transform(test)  # 利用m对data进行归一化，并储存df的归一化参数. 用测试集的归一化参数来反归一化y_test和预测值
+    standard_scaler.fit(train[:, -2].reshape(-1, 1)) 
+    m = standard_scaler.transform(test)  # 利用m对data进行归一化，并储存df的归一化参数. 用测试集的归一化参数来反归一化y_test和预测值
 
 
     '反归一化'
@@ -573,7 +583,8 @@ def denormalize(df, normalized_value, division_rate2, seq_len, mulpre, testdata_
     print('new',new.shape)
 
     
-    residual = data[int(row2) + seq_len : int(row2) + seq_len +  mulpre * testdata_len, : ]#差分残差从test的seq-1序号天开始到test的倒数第二天,预测加上前一天的残差对应test[seq:]反归一的真实值,注意y_test和预测值是一致的
+    residual = data[int(row2) + seq_len : int(row2) + seq_len +  mulpre * testdata_len, -2 ]#差分残差从test的seq-1序号天开始到test的倒数第二天,预测加上前一天的残差对应test[seq:]反归一的真实值,注意y_test和预测值是一致的; Only -2 (Adj Close) is used for residual for now.
+    residual = residual.reshape(-1, 1)  # reshape to (618, 1)
     print('residual', residual.shape)
 
     sum = new + residual

@@ -26,7 +26,7 @@ class G:
     T_mult = 2
     T_cur = 0.0
     # training
-    epochs = 200 #21 should be T_i + a power of T_mult, ex) T_mult = 2 -> epochs = 2**5 + 1 = 32+1 = 33   257
+    epochs = 5 #21 should be T_i + a power of T_mult, ex) T_mult = 2 -> epochs = 2**5 + 1 = 32+1 = 33   257, original epoch number was 5.
     learning_rate = 0.003 #0.0045
     min_learning_rate = 7e-11
     # weight_decay = 0.0 #No weight decay param in the the keras optimizers
