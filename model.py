@@ -37,37 +37,36 @@ def classify(current, future):
         return 0
 
 
-def get_stock_data(df):
-    df.drop(['Date', 'Close'], axis=1, inplace=True)#由于date不连续,这时候保留5维
+def get_stock_data(df): # drop NAs and calculate the 1st order derivatives of Adj Close.
+    df.drop(['Date', 'Close'], axis=1, inplace=True)
     list = df['Adj Close']
-    list1 = list.diff(1).dropna()  # list1为list的1阶差分序列,序列的序号从1开始,所以要tolist,这样序号才从0开始. 但是列表不能调用diff
-    # 或者list1 = np.diff(list)[1:]
+    list1 = list.diff(1).dropna()
     list = list.iloc[:, 0].tolist()
     list1 = list1.iloc[:, 0].tolist()
 
-    list1 = np.array(list1)#array才能reshape
+    list1 = np.array(list1)
     df = df.drop(0, axis=0)
-    # print(df1.head())
+
     df['Adj Close'] = list1
     df = df.reset_index(drop=True)
     print(df.head())
     return df,list,list1
 
 
-#先划分训练集测试集,再标准化归一化,避免数据泄露
-def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=True):
-    amount_of_features = 1  # columns是列索引,index是行索引
+
+def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=True): # Prepare training, validation, and test datasets.
+    amount_of_features = G.num_features 
     data = df.values
-    row1 = round(division_rate1 * data.shape[0])  #0.8  split可改动!!!!!!!#round是四舍五入,0.9可能乘出来小数  #shape[0]是result列表中子列表的个数
-    row2 = round(division_rate2 * data.shape[0])  #0.9
-    #训练集和测试集划分
+    row1 = round(division_rate1 * data.shape[0])  #0.8: split 80% for training
+    row2 = round(division_rate2 * data.shape[0])  #0.9: split the next 10% for validation
+
     train = data[:int(row1), :]
     valid = data[int(row1):int(row2), :]
     test = data[int(row2): , :]
 
-    print('train', train)
-    print('valid', valid)
-    print('test', test)
+    #print('train', train)
+    #print('valid', valid)
+    #print('test', test)
 
     # 训练集和测试集归一化
     if normalize:
@@ -76,10 +75,10 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
         valid = standard_scaler.transform(valid)
         test = standard_scaler.transform(test)
 
-    print('train',train)
-    print('valid', valid)
-    print('test', test)
-    X_train = []  # train列表中4个特征记录
+    #print('train',train)
+    #print('valid', valid)
+    #print('test', test)
+    X_train = []
     y_train = []
     X_valid = []
     y_valid = []
@@ -88,18 +87,18 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
     train_samples=train.shape[0]-seq_len-mul+1
     valid_samples = valid.shape[0] - seq_len - mul + 1
     test_samples = test.shape[0] - seq_len - mul + 1
-    for i in range(0,train_samples,mul):  # maximum date = lastest  date - sequence length  #index从0到极限maximum,所有天数正好被滑窗采样完
-        X_train.append(train[i:i + seq_len,-2])#每个滑窗每天四个特征
-        y_train.append(train[i + seq_len:i+seq_len+tgt,-2])#-1为成交量,倒数第二个才是adj close
+    for i in range(0,train_samples,mul):  # maximum date = lastest  date - sequence length  
+        X_train.append(train[i:i + seq_len,-amount_of_features:]) # five features per sliding window, i.e., 4 features + 1 target
+        y_train.append(train[i + seq_len:i+seq_len+tgt,-1]) # idx -1 is the target, i.e., Adj Close, the last feature in the data
 
-    for i in range(0,valid_samples,mul):  # maximum date = lastest  date - sequence length  #index从0到极限maximum,所有天数正好被滑窗采样完
-        X_valid.append(valid[i:i + seq_len,-2])#每个滑窗每天四个特征
-        y_valid.append(valid[i+seq_len:i+seq_len+tgt,-2])#-1为成交量,倒数第二个才是adj close
+    for i in range(0,valid_samples,mul):  # maximum date = lastest  date - sequence length
+        X_valid.append(valid[i:i + seq_len,-amount_of_features:])
+        y_valid.append(valid[i+seq_len:i+seq_len+tgt,-1])
 
-    for i in range(0, test_samples,mul):  # maximum date = lastest date - sequence length  #index从0到极限maximum,所有天数正好被滑窗采样完
-        X_test.append(test[i:i + seq_len, -2])  # 每个滑窗每天四个特征
-        y_test.append(test[i+seq_len:i+seq_len+tgt, -2])  # -1即取最后一个特征
-    # X都对应全部4特征,y都对应adj close   #train都是前百分之90,test都是后百分之10
+    for i in range(0, test_samples,mul):  # maximum date = lastest date - sequence length
+        X_test.append(test[i:i + seq_len, -amount_of_features:])
+        y_test.append(test[i+seq_len:i+seq_len+tgt, -1])
+
     X_train = np.array(X_train)
     y_train = np.array(y_train)
     X_valid = np.array(X_valid)
@@ -120,15 +119,15 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
     print('X_test', X_test.shape)
     print('y_test', y_test.shape)
     print('df', df)
-    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], amount_of_features))  # (90%maximum, seq-1 ,4) #array才能reshape
+    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], amount_of_features))
     X_valid = np.reshape(X_valid, (X_valid.shape[0], X_valid.shape[1], amount_of_features))
-    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], amount_of_features))  # (10%maximum, seq-1 ,4) #array才能reshape、
+    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], amount_of_features))
 
 
     print('X_train', X_train.shape)
     print('X_valid', X_valid.shape)
     print('X_test', X_test.shape)
-    return X_train, y_train, X_valid, y_valid, X_test, y_test  # x是训练的数据，y是数据对应的标签,也就是说y是要预测的那一个特征!!!!!!
+    return X_train, y_train, X_valid, y_valid, X_test, y_test
 
 
 #################################
@@ -141,14 +140,14 @@ def FullyConnected():
                                 ),
         # (G.batch_size, G.window_size, G.dense_dim)
 
-        #原来是relu
+
         tf.keras.layers.BatchNormalization(momentum = 0.98, epsilon=5e-4),
-        #原来是G.dense_dim
+
         tf.keras.layers.Dense(G.d_model,
                                 kernel_initializer = tf.keras.initializers.HeNormal(),
                                 bias_initializer = tf.keras.initializers.RandomUniform(minval=0.001, maxval = 0.01)
                                 ),
-        # (G.batch_size, G.window_size, G.dense_dim)
+
         tf.keras.layers.BatchNormalization(momentum = 0.95, epsilon=5e-4)
     ])
 
@@ -418,7 +417,7 @@ class Decoder(tf.keras.layers.Layer):
                                     self.enc_memory_mask,
                                     training=training)
 
-        print('y.shape', y.shape)
+        #print('y.shape', y.shape)
         return y
 
 
@@ -453,8 +452,6 @@ class Transformer(tf.keras.Model):
             ),
             tf.keras.layers.BatchNormalization(momentum=0.97, epsilon=5e-4),
 
-#!!!!!!!!!!!!activation原来是sigmoid，bias_initializer=tf.keras.initializers.RandomUniform(minval=0.001, maxval=0.005)
-            #!!!!!!!!!!!!!!!!!!dense里面是1，而不是mul（是把d_model数字回归1维最后结果）
             tf.keras.layers.Dense(1)
         ])
 
@@ -471,30 +468,29 @@ class Transformer(tf.keras.Model):
 
         """
         enc_input = x[:, :self.src_len, :]   # (G.batch_size, G.src_len, G.num_features)
-        dec_input = x[:, -self.dec_len:, ]  # only want the SOC thats why -1 is there!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        print(type(dec_input))
-        print('dec_input.shape',dec_input.shape)
-        #dec_input = dec_input.resize_as_(dec_input.shape[0],dec_input.shape[1],1)#(128,3)->(128,3,1)
+        dec_input = x[:, -self.dec_len:, ]
+        #print(type(dec_input))
+        #print('dec_input.shape',dec_input.shape)
 
 
 
 
         enc_output = self.encoder(enc_input, training=training)  # (G.batch_size, G.src_len, G.num_features)
-        print('enc_output.shape', enc_output.shape)
+        #print('enc_output.shape', enc_output.shape)
 
         dec_output = self.decoder(dec_input, enc_output, training=training)
-        print('dec_output.shape', dec_output.shape)
+        #print('dec_output.shape', dec_output.shape)
         # (G.batch_size, G.tgt_len, 32)
 
         final_output = self.linear_map(dec_output)  # (G.batch_size, G.tgt_len, 1)
 
-        print('final_output.shape', final_output.shape)
+        #print('final_output.shape', final_output.shape)
         final_output = tf.transpose(final_output,perm=[0,2,1])
         final_output = Dense(G.tgt_len)(final_output)
         final_output = tf.transpose(final_output,perm=[0,2,1])
-        print('final_output.shape', final_output.shape)
+        #print('final_output.shape', final_output.shape)
         return final_output
+
 
 def calculate_accuracy(pre, real):
     print('pre.shape', pre.shape)
@@ -510,85 +506,74 @@ def calculate_accuracy(pre, real):
     R2 = r2_score(pre, real)
     dict = {'MAPE': [MAPE], 'RMSE': [RMSE], 'MAE': [MAE], 'R2': [R2]}
     df = pd.DataFrame(dict)
-    print('最终的准确率和指标如下\n',df)
+    print('Performance metrics:\n',df)
     return df
 
 def up_down_accuracy(real, pre):
-    '''products = []
 
-    print('tf.shape',tf.shape(real))
-    print('pre.shape',pre.shape)
-    for i in tf.range(tf.shape(real)[0]):
-        products.append(real[i] *  pre[i])
-    accuracy = (sum([int(x > 0) for x in products])) / len(products)
-    return accuracy'''
-    print('real.shape', real.shape)
-    print('pre.shape', pre.shape)
+    #print('real.shape', real.shape)
+    #print('pre.shape', pre.shape)
     mse = tf.reduce_mean(tf.square(pre - real))
-    print('MSE is:',K.get_value(mse))
-    print('real666.shape', real.shape)
-    print('pre666.shape', pre.shape)#real666.shape (None, 3)  pre666.shape (None, 3)
-    print('real666', real)
-    print('pre666', pre)
-    accu = tf.multiply(real,pre)#矩阵点积，不是乘法，得出正负，正的就是趋势预测正确
-    accu = tf.nn.relu(accu)#relu(x) = max(0,x)
-    accu = tf.sign(accu)#正数变1，0不变
-    accu = tf.reduce_mean(accu)#取平均
-    print('\n\n\n')
-    print('Accuracy is:', K.get_value(accu))#准确率，0.x
-    '''result = tf.compat.v1.Session().run(result)
+    #print('MSE is:',K.get_value(mse))
 
-    print('resultnumpy', result)
-    accuracy = (sum([int(x > 0) for x in result]))
-    print('loss666', tf.math.reduce_mean(tf.square(real - pre)))'''
-    accu = 1 - accu#loss越小越好，所以1-准确率S
-    #loss = mse + accu * 10 #mse个位数，accu 0.x
-    loss = accu * pow(10, floor(math.log(abs(mse), 10))) + mse
-    print('Loss is:', K.get_value(loss))
-    return loss#个位数
+    #print('real666.shape', real.shape)
+    #print('pre666.shape', pre.shape)#real666.shape (None, 3)  pre666.shape (None, 3)
+    #print('real666', real)
+    #print('pre666', pre)
+    accu = tf.multiply(real,pre)
+    accu = tf.nn.relu(accu)
+    accu = tf.sign(accu)
+    accu = tf.reduce_mean(accu)
+
+    #print('\n')
+    #print('Accuracy is:', K.get_value(accu))
+    
+    loss = (1-accu) * pow(10, floor(math.log(abs(mse), 10))) + mse
+    #print('\n')
+    #print('Loss is:', K.get_value(loss))
+
+    return loss
 
 
 def denormalize(df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len):
     list = df['Adj Close']
-    list1 = list.diff(1).dropna()  # list1为list的1阶差分序列,序列的序号从1开始,所以要tolist,这样序号才从0开始. 但是列表不能调用diff
-    # 或者list1 = np.diff(list)[1:]
+    list1 = list.diff(1).dropna()  # list 1 is the first order difference of Adj Close, i.e., the difference between Adj Close and the previous day Adj Close
+
     list1 = list1.iloc[:, 0].tolist()
-    list1 = np.array(list1)  # array才能reshape
+    list1 = np.array(list1)  
     df1 = df.drop(0, axis=0)
     df1['Adj Close'] = list1
-    df1 = df1.reset_index(drop=True)#index从0开始
+    df1 = df1.reset_index(drop=True)
     print(df.head())
     print(df1.head())
     data = df.values
     data1 = df1.values
 
 
-    # 训练集和测试集划分
+    # row indices for splitting the data into train, validation, and test sets
     row1 = round(division_rate1 * list1.shape[0])
     row2 = round(division_rate2 * list1.shape[0])
 
     train = data1[:int(row1), :]
     test = data1[int(row2): , :]
 
-    test = test[:,-2].reshape(-1, 1)#取原来没有归一化的adj数据作为样本
+    test = test[:,-1].reshape(-1, 1)
 
     standard_scaler = preprocessing.StandardScaler()
-    standard_scaler.fit(train[:, -2].reshape(-1, 1)) 
-    m = standard_scaler.transform(test)  # 利用m对data进行归一化，并储存df的归一化参数. 用测试集的归一化参数来反归一化y_test和预测值
+    standard_scaler.fit(train[:, -1].reshape(-1, 1)) 
+    m = standard_scaler.transform(test)
 
 
     '反归一化'
     normalized_value = normalized_value.reshape(-1, 1)
-    new = standard_scaler.inverse_transform(normalized_value)#利用m对normalized_value进行反归一化
+    new = standard_scaler.inverse_transform(normalized_value) # use m to inverse transform the normalized test values.
     print('new',new.shape)
 
     
-    residual = data[int(row2) + seq_len : int(row2) + seq_len +  mulpre * testdata_len, -2 ]#差分残差从test的seq-1序号天开始到test的倒数第二天,预测加上前一天的残差对应test[seq:]反归一的真实值,注意y_test和预测值是一致的; Only -2 (Adj Close) is used for residual for now.
+    residual = data[int(row2) + seq_len : int(row2) + seq_len +  mulpre * testdata_len, -1 ] #Only -2 (Adj Close) is used for residual for now.
     residual = residual.reshape(-1, 1)  # reshape to (618, 1)
     print('residual', residual.shape)
 
     sum = new + residual
-    '归一化'
-    '''m = min_max_scaler.fit_transform(train)  # 利用m对train进行归一化，并储存df的归一化参数!!
-    new = min_max_scaler.transform(test)  # 利用m对test也进行归一化,注意这里是transform不能是fit_transform!!!1'''
-    return new,sum#new是差分预测值，sum是没差分的预测值}}
+
+    return new,sum
