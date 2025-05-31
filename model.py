@@ -1,3 +1,5 @@
+import os
+import joblib
 import math
 from math import floor
 import yfinance as yf
@@ -68,7 +70,6 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
     #print('valid', valid)
     #print('test', test)
 
-    # 训练集和测试集归一化
     if normalize:
         standard_scaler = preprocessing.StandardScaler()
         train = standard_scaler.fit_transform(train)
@@ -164,8 +165,8 @@ class EncoderLayer(tf.keras.layers.Layer):
                     num_heads,
                     d_k,
                     dropout_rate,
-                    batchnorm_eps):
-        super(EncoderLayer, self).__init__()
+                    batchnorm_eps,**kwargs):
+        super(EncoderLayer, self).__init__(**kwargs)
 
         self.mha = MultiHeadAttention(
             num_heads=num_heads,
@@ -228,8 +229,8 @@ class Encoder(tf.keras.layers.Layer):
                     dense_dim=G.dense_dim,
                     maximum_position_encoding=G.src_len,
                     dropout_rate=G.dropout_rate,
-                    batchnorm_eps=1e-4):
-        super(Encoder, self).__init__()
+                    batchnorm_eps=1e-4,**kwargs):
+        super(Encoder, self).__init__(**kwargs)
 
         self.num_layers = num_layers
 
@@ -281,8 +282,8 @@ class DecoderLayer(tf.keras.layers.Layer):
                     num_heads,
                     d_k,
                     dropout_rate,
-                    batchnorm_eps):
-        super(DecoderLayer, self).__init__()
+                    batchnorm_eps,**kwargs):
+        super(DecoderLayer, self).__init__(**kwargs)
 
         self.mha1 = MultiHeadAttention(
             num_heads=num_heads,
@@ -370,8 +371,8 @@ class Decoder(tf.keras.layers.Layer):
                     target_size=G.num_features,
                     maximum_position_encoding=G.dec_len,
                     dropout_rate=G.dropout_rate,
-                    batchnorm_eps=1e-5):
-        super(Decoder, self).__init__()
+                    batchnorm_eps=1e-5,**kwargs):
+        super(Decoder, self).__init__(**kwargs)
 
         self.num_layers = num_layers
         self.pos_encoding = positional_encoding(maximum_position_encoding,
@@ -434,8 +435,9 @@ class Transformer(tf.keras.Model):
                     dec_len = G.dec_len,
                     tgt_len=G.tgt_len,
                     max_positional_encoding_input=G.src_len,
-                    max_positional_encoding_target=G.tgt_len):
-        super(Transformer, self).__init__()
+                    max_positional_encoding_target=G.tgt_len,
+                    **kwargs):
+        super(Transformer, self).__init__(**kwargs)
 
         self.tgt_len = tgt_len
         self.dec_len = dec_len
@@ -454,6 +456,8 @@ class Transformer(tf.keras.Model):
 
             tf.keras.layers.Dense(1)
         ])
+
+        self.final_dense = tf.keras.layers.Dense(tgt_len)
 
     def call(self, x, training):
         """
@@ -486,7 +490,7 @@ class Transformer(tf.keras.Model):
 
         #print('final_output.shape', final_output.shape)
         final_output = tf.transpose(final_output,perm=[0,2,1])
-        final_output = Dense(G.tgt_len)(final_output)
+        final_output = self.final_dense(final_output)  # (G.batch_size, G.tgt_len, 1
         final_output = tf.transpose(final_output,perm=[0,2,1])
         #print('final_output.shape', final_output.shape)
         return final_output
@@ -509,33 +513,20 @@ def calculate_accuracy(pre, real):
     print('Performance metrics:\n',df)
     return df
 
-def up_down_accuracy(real, pre):
+def up_down_accuracy(y_true, y_pred):
 
-    #print('real.shape', real.shape)
-    #print('pre.shape', pre.shape)
-    mse = tf.reduce_mean(tf.square(pre - real))
-    #print('MSE is:',K.get_value(mse))
+    mse = tf.reduce_mean(tf.square(y_pred - y_true))
+    trend = tf.multiply(y_true, y_pred)
+    trend = tf.nn.relu(trend)
+    trend = tf.sign(trend)
+    trend_acc = tf.reduce_mean(trend)
 
-    #print('real666.shape', real.shape)
-    #print('pre666.shape', pre.shape)#real666.shape (None, 3)  pre666.shape (None, 3)
-    #print('real666', real)
-    #print('pre666', pre)
-    accu = tf.multiply(real,pre)
-    accu = tf.nn.relu(accu)
-    accu = tf.sign(accu)
-    accu = tf.reduce_mean(accu)
-
-    #print('\n')
-    #print('Accuracy is:', K.get_value(accu))
-    
-    loss = (1-accu) * pow(10, floor(math.log(abs(mse), 10))) + mse
-    #print('\n')
-    #print('Loss is:', K.get_value(loss))
-
+    scale = tf.pow(10.0, tf.floor(tf.math.log(tf.abs(mse) + 1e-8) / tf.math.log(10.0)))
+    loss = (1.0 - trend_acc) * scale + mse
     return loss
 
 
-def denormalize(df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len):
+def denormalize(ticker, df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len, cwd, scalersave = False):
     list = df['Adj Close']
     list1 = list.diff(1).dropna()  # list 1 is the first order difference of Adj Close, i.e., the difference between Adj Close and the previous day Adj Close
 
@@ -563,8 +554,13 @@ def denormalize(df, normalized_value, division_rate1, division_rate2, seq_len, m
     standard_scaler.fit(train[:, -1].reshape(-1, 1)) 
     m = standard_scaler.transform(test)
 
+    if scalersave == True:
+        scaler_file = 'output/standard_train_scaler_' + ticker + '.pkl'
+        scaler_path = os.path.join(cwd, scaler_file)
+        joblib.dump(standard_scaler, scaler_path)
 
-    '反归一化'
+
+    # invderse transform the normalized value
     normalized_value = normalized_value.reshape(-1, 1)
     new = standard_scaler.inverse_transform(normalized_value) # use m to inverse transform the normalized test values.
     print('new',new.shape)
@@ -577,3 +573,39 @@ def denormalize(df, normalized_value, division_rate1, division_rate2, seq_len, m
     sum = new + residual
 
     return new,sum
+
+
+def predict_next_days(ticker, model, standard_scaler):
+
+    START = "2000-01-01"
+    TODAY = date.today().strftime("%Y-%m-%d")
+
+
+    df_raw = acquire_ticker(ticker, START, TODAY)
+    df_raw = df_raw.sort_values('Date')
+
+    # Step 1: get last 20 days
+    df_latest = df_raw.iloc[-21:]
+    df_latest = df_latest[['Date','Open','High','Low','Close','Volume','Adj Close']]
+    df_latest = df_latest.drop(columns=['Date','Close'])
+    features = df_latest.iloc[:, -G.num_features:]
+    features_diff = features.diff(1).dropna()
+    
+    # Step 2: normalize
+
+
+    X_input = standard_scaler.transform(features_diff.values)
+    X_input = np.expand_dims(X_input, axis=0)  # shape (1, 20, 5)
+
+    # Step 3: predict
+    y_pred_norm = model(tf.convert_to_tensor(X_input), training=False).numpy()
+    y_pred_norm = y_pred_norm.reshape(-1, 1)  # shape (3, 1)
+
+    # Step 4: inverse transform
+    y_pred_real = standard_scaler.inverse_transform(y_pred_norm)
+    
+    # Step 5: if differenced, reconstruct price
+    last_price = df_latest["Adj Close"].values[-1]
+    y_pred_final = np.cumsum(y_pred_real.flatten()) + last_price
+
+    return y_pred_final  # next 3 days' predicted prices

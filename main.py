@@ -1,3 +1,4 @@
+import os
 import math
 from math import floor
 import numpy
@@ -32,7 +33,7 @@ else:
     print("Not enough GPU hardware devices available")
 
 
-l = ['AAPL', 'GOOG'] # a list of stock tickers to be processed.
+l = ['AAPL','NVDA','GOOG'] # a list of stock tickers to be processed.
 
 for i in l:
     
@@ -57,7 +58,7 @@ for i in l:
     X_train, y_train, X_valid, y_valid, X_test, y_test = load_data(df, seq_len, mulpre, division_rate1, division_rate2,tgt)
     tf.keras.backend.clear_session()
     model = Transformer()
-    model.build(input_shape=[None, G.window_size, G.num_features])#输入的格式
+    model.build(input_shape=[None, G.window_size, G.num_features])
     #model.summary(expand_nested=True)
 
 
@@ -74,21 +75,48 @@ for i in l:
 
 
     model.compile(loss=up_down_accuracy, optimizer=optimizer, metrics=["mse"])
+    
 
+    #early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1, mode='min', restore_best_weights=True)
+
+    cwd = os.getcwd()  # Get current working directory
+    checkpoint_file = 'ckpt/model_checkpoint_' + i + '.keras'
+    checkpoint_path = os.path.join(cwd, checkpoint_file)
+    #model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=True, mode='min')
+    model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=False, mode='auto')
 
     history = model.fit(X_train,y_train,
                         epochs = G.epochs,
                         batch_size=G.batch_size,
                         verbose = 1,
-                        validation_data=(X_valid, y_valid)
+                        validation_data=(X_valid, y_valid),
+                        callbacks=[model_checkpoint]
                         )
+    
+
+    # Plot the training history:
+
+    epoch_start_idx = 3 # skip the first 3 epochs for plotting
+    train_hist_x = [k for k in range (epoch_start_idx, len(history.history['loss']))]
+
+    plt.plot(train_hist_x,history.history['loss'][epoch_start_idx:])
+    plt.plot(train_hist_x,history.history['val_loss'][epoch_start_idx:])
+
+    plt.title('Losses vs Epochs')
+
+
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'val'], loc='upper right')
+    plt.show()
+
 
     predicted_stock_price_multi_head = model.predict(X_test)
 
 
     testdata_len = y_test.shape[0]
-    predicted_stock_price_multi_head_dff1, predicted_stock_price_multi_head = denormalize(df_raw, predicted_stock_price_multi_head,division_rate1,division_rate2, seq_len, mulpre, testdata_len) # denormalize model predictions of the test set.
-    y_test_dff1, y_test = denormalize(df_raw, y_test,division_rate1,division_rate2, seq_len, mulpre, testdata_len) # denormalize ground truth of the test set.
+    predicted_stock_price_multi_head_dff1, predicted_stock_price_multi_head = denormalize(i, df_raw, predicted_stock_price_multi_head,division_rate1,division_rate2, seq_len, mulpre, testdata_len, cwd, True) # denormalize model predictions of the test set.
+    y_test_dff1, y_test = denormalize(i, df_raw, y_test,division_rate1,division_rate2, seq_len, mulpre, testdata_len, cwd, False) # denormalize ground truth of the test set.
 
 
     accu = np.multiply(predicted_stock_price_multi_head_dff1,y_test_dff1)
@@ -120,3 +148,16 @@ for i in l:
     plt.legend(fontsize=18)
     plt.show()
     plt.close()
+
+    # Next 3 days prediction:
+
+    cwd = os.getcwd()  # Get current working directory
+    scaler_file = 'output/standard_train_scaler_' + i + '.pkl'
+    scaler_path = os.path.join(cwd, scaler_file)
+    standard_scaler = joblib.load(scaler_path)
+
+    y_pred_next_days = predict_next_days(i, model, standard_scaler)
+
+    print(f'Next 3 days predicted prices for {i}:', y_pred_next_days, end = '\n\n\n')
+
+
