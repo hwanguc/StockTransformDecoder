@@ -33,6 +33,7 @@ else:
     print("Not enough GPU hardware devices available")
 
 
+cwd = os.getcwd()  # Get current working directory
 l = ['AAPL','NVDA','GOOG'] # a list of stock tickers to be processed.
 
 for i in l:
@@ -55,7 +56,7 @@ for i in l:
 
 
     df,list,list1 = get_stock_data(df_raw)
-    X_train, y_train, X_valid, y_valid, X_test, y_test = load_data(df, seq_len, mulpre, division_rate1, division_rate2,tgt)
+    X_train, y_train, X_valid, y_valid, X_test, y_test = load_data(df, seq_len, mulpre, division_rate1, division_rate2,tgt, i, cwd, True, True)
     tf.keras.backend.clear_session()
     model = Transformer()
     model.build(input_shape=[None, G.window_size, G.num_features])
@@ -77,26 +78,25 @@ for i in l:
     model.compile(loss=up_down_accuracy, optimizer=optimizer, metrics=["mse"])
     
 
-    #early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1, mode='min', restore_best_weights=True)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=20, verbose=1, mode='min', restore_best_weights=True)
 
-    cwd = os.getcwd()  # Get current working directory
     checkpoint_file = 'ckpt/model_checkpoint_' + i + '.keras'
     checkpoint_path = os.path.join(cwd, checkpoint_file)
-    #model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=True, mode='min')
-    model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=False, mode='auto')
+    model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=True, mode='min') # save the best model based on val loss to checkpoint.
+    #model_checkpoint = ModelCheckpoint(filepath=checkpoint_path, monitor='val_loss', save_best_only=False, mode='auto') # save the model at every epoch to checkpoint.
 
     history = model.fit(X_train,y_train,
                         epochs = G.epochs,
                         batch_size=G.batch_size,
                         verbose = 1,
                         validation_data=(X_valid, y_valid),
-                        callbacks=[model_checkpoint]
+                        callbacks=[early_stopping, model_checkpoint]
                         )
     
 
     # Plot the training history:
 
-    epoch_start_idx = 3 # skip the first 3 epochs for plotting
+    epoch_start_idx = 0 # skip the first 3 epochs for plotting
     train_hist_x = [k for k in range (epoch_start_idx, len(history.history['loss']))]
 
     plt.plot(train_hist_x,history.history['loss'][epoch_start_idx:])
@@ -151,12 +151,15 @@ for i in l:
 
     # Next 3 days prediction:
 
-    cwd = os.getcwd()  # Get current working directory
-    scaler_file = 'output/standard_train_scaler_' + i + '.pkl'
-    scaler_path = os.path.join(cwd, scaler_file)
-    standard_scaler = joblib.load(scaler_path)
+    scaler_file_input = 'output/standard_train_scaler_input' + i + '.pkl'
+    scaler_path_input = os.path.join(cwd, scaler_file_input)
+    standard_scaler_input = joblib.load(scaler_path_input)
+    
+    scaler_file_output = 'output/standard_train_scaler_output' + i + '.pkl'
+    scaler_path_output = os.path.join(cwd, scaler_file_output)
+    standard_scaler_output = joblib.load(scaler_path_output)
 
-    y_pred_next_days = predict_next_days(i, model, standard_scaler)
+    y_pred_next_days = predict_next_days(i, model, standard_scaler_input, standard_scaler_output)
 
     print(f'Next 3 days predicted prices for {i}:', y_pred_next_days, end = '\n\n\n')
 

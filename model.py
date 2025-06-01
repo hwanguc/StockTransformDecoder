@@ -56,7 +56,7 @@ def get_stock_data(df): # drop NAs and calculate the 1st order derivatives of Ad
 
 
 
-def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=True): # Prepare training, validation, and test datasets.
+def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, ticker, cwd, normalize=True, scalersave_input = True): # Prepare training, validation, and test datasets.
     amount_of_features = G.num_features 
     data = df.values
     row1 = round(division_rate1 * data.shape[0])  #0.8: split 80% for training
@@ -71,10 +71,15 @@ def load_data(df, seq_len , mul, division_rate1, division_rate2, tgt, normalize=
     #print('test', test)
 
     if normalize:
-        standard_scaler = preprocessing.StandardScaler()
-        train = standard_scaler.fit_transform(train)
-        valid = standard_scaler.transform(valid)
-        test = standard_scaler.transform(test)
+        standard_scaler_input = preprocessing.StandardScaler()
+        train = standard_scaler_input.fit_transform(train)
+        valid = standard_scaler_input.transform(valid)
+        test = standard_scaler_input.transform(test)
+
+        if scalersave_input == True:
+            scaler_file = 'output/standard_train_scaler_input' + ticker + '.pkl'
+            scaler_path = os.path.join(cwd, scaler_file)
+            joblib.dump(standard_scaler_input, scaler_path)
 
     #print('train',train)
     #print('valid', valid)
@@ -526,7 +531,7 @@ def up_down_accuracy(y_true, y_pred):
     return loss
 
 
-def denormalize(ticker, df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len, cwd, scalersave = False):
+def denormalize(ticker, df, normalized_value, division_rate1, division_rate2, seq_len, mulpre, testdata_len, cwd, scalersave_output = False):
     list = df['Adj Close']
     list1 = list.diff(1).dropna()  # list 1 is the first order difference of Adj Close, i.e., the difference between Adj Close and the previous day Adj Close
 
@@ -550,19 +555,19 @@ def denormalize(ticker, df, normalized_value, division_rate1, division_rate2, se
 
     test = test[:,-1].reshape(-1, 1)
 
-    standard_scaler = preprocessing.StandardScaler()
-    standard_scaler.fit(train[:, -1].reshape(-1, 1)) 
-    m = standard_scaler.transform(test)
+    standard_scaler_output = preprocessing.StandardScaler() # This scaler is used to normalize the output, i.e., the Adj Close values.
+    standard_scaler_output.fit(train[:, -1].reshape(-1, 1)) 
+    m = standard_scaler_output.transform(test)
 
-    if scalersave == True:
-        scaler_file = 'output/standard_train_scaler_' + ticker + '.pkl'
+    if scalersave_output == True:
+        scaler_file = 'output/standard_train_scaler_output' + ticker + '.pkl'
         scaler_path = os.path.join(cwd, scaler_file)
-        joblib.dump(standard_scaler, scaler_path)
+        joblib.dump(standard_scaler_output, scaler_path)
 
 
     # invderse transform the normalized value
     normalized_value = normalized_value.reshape(-1, 1)
-    new = standard_scaler.inverse_transform(normalized_value) # use m to inverse transform the normalized test values.
+    new = standard_scaler_output.inverse_transform(normalized_value) # use m to inverse transform the normalized test values.
     print('new',new.shape)
 
     
@@ -575,7 +580,7 @@ def denormalize(ticker, df, normalized_value, division_rate1, division_rate2, se
     return new,sum
 
 
-def predict_next_days(ticker, model, standard_scaler):
+def predict_next_days(ticker, model, standard_scaler_input, standard_scaler_output):
 
     START = "2000-01-01"
     TODAY = date.today().strftime("%Y-%m-%d")
@@ -594,7 +599,7 @@ def predict_next_days(ticker, model, standard_scaler):
     # Step 2: normalize
 
 
-    X_input = standard_scaler.transform(features_diff.values)
+    X_input = standard_scaler_input.transform(features_diff.values)
     X_input = np.expand_dims(X_input, axis=0)  # shape (1, 20, 5)
 
     # Step 3: predict
@@ -602,7 +607,7 @@ def predict_next_days(ticker, model, standard_scaler):
     y_pred_norm = y_pred_norm.reshape(-1, 1)  # shape (3, 1)
 
     # Step 4: inverse transform
-    y_pred_real = standard_scaler.inverse_transform(y_pred_norm)
+    y_pred_real = standard_scaler_output.inverse_transform(y_pred_norm)
     
     # Step 5: if differenced, reconstruct price
     last_price = df_latest["Adj Close"].values[-1]

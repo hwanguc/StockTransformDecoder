@@ -16,7 +16,7 @@ class G:
     # network
     d_model = 512
     dense_dim = 2048
-    num_features = 1  # current, voltage, and soc at t minus G.window_size -> t minus 1
+    num_features = 5  # num of features in the input data (5= Open, High, Low, Volume, Adj Close; 1 = Adj Close)
     num_heads = 8
     d_k = int(d_model/num_heads)
     num_layers = 6
