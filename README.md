@@ -1,6 +1,6 @@
 # StockTransformDecoder
 
-This repo contains Python scripts for predicting the adjusted close stock price with a Transformer model based on the Galformer architecture ([Ji et al., 2024](https://www.nature.com/articles/s41598-024-72045-3)). The current model generates next 3-day prediction of the Adj Close price based on the a sliding window of Open, High, Low, Adjusted Close prices and Volume from the previous 20 days. You can add more features as needed.
+This repo contains Python scripts for predicting the adjusted close stock price with a Transformer model based on the Galformer architecture ([Ji et al., 2024](https://www.nature.com/articles/s41598-024-72045-3)). The current model generates a next-3-day prediction of the Adj Close price based on a sliding window of 5 features (i.e., Open, High, Low, Adjusted Close prices and Volume) from the previous 20 days. You can add more features as needed.
 
 ## Scripts
 
@@ -18,14 +18,14 @@ This repo contains Python scripts for predicting the adjusted close stock price 
 
 ## Examples
 
-AAPL (Adj Closed for test dataset):<br />
+AAPL (Adj Closed for the test dataset):<br /><br />
 ![alt text](https://github.com/hwanguc/StockTransformDecoder/blob/main/output/pred_AAPL_5features_next3days.png "Prediced AAPL Adj Closed for test dataset")
 <br /><br />
 
-NVDA (Adj Closed for test dataset):<br />
+NVDA (Adj Closed for the test dataset):<br /><br />
 ![alt text](https://github.com/hwanguc/StockTransformDecoder/blob/main/output/pred_NVDA_5features_next3days.png "Prediced NVDA Adj Closed for test dataset")
 <br /><br />
 
-GOOG (Adj Closed for test dataset):<br />
+GOOG (Adj Closed for the test dataset):<br /><br />
 ![alt text](https://github.com/hwanguc/StockTransformDecoder/blob/main/output/pred_GOOG_5features_next3days.png "Prediced GOOG Adj Closed for test dataset")
 <br /><br />
